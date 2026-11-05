@@ -1,5 +1,6 @@
 // GANTI DENGAN URL WEB APP GOOGLE APPS SCRIPT MILIKMU
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzfLOIJOrXi32DJSgIeU4lFtEYMbKLci9rpkDYQ0mneBCkfjmTJLazQK7Atr2ywGQsU/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwHQNBDURvE_u0rqH9rhJKzVMQTbrS8XTKq09XTxP_uy_Z72CgCKE3qWvkW-_nR9hAe/exec";
+
 let state = {
     token: localStorage.getItem("diary_token") || null,
     user: null,
