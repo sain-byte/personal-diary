@@ -1,15 +1,13 @@
-// GANTI DENGAN URL WEB APP GOOGLE APPS SCRIPT MILIKMU
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwHQNBDURvE_u0rqH9rhJKzVMQTbrS8XTKq09XTxP_uy_Z72CgCKE3qWvkW-_nR9hAe/exec";
+// URL Web App Google Apps Script yang baru
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyXLHoue3p1WlwXRg03_Ys-Q9kMMsuNxfYPb5VzAbx0Zih7FXX-lNKyuNt79In_h0Cr/exec"; 
 
 let state = {
     token: localStorage.getItem("diary_token") || null,
-    user: null,
     currentDiaryId: null,
     aiCorrectedText: "",
     autoSaveTimer: null
 };
 
-// Listen postMessage response from GAS iframe
 window.addEventListener("message", (event) => {
     if (event.data && event.data.channel === "PERSONAL_DIARY_GAS") {
         const res = event.data.payload;
@@ -23,15 +21,11 @@ window.addEventListener("message", (event) => {
 function callGas(action, data = {}) {
     return new Promise((resolve, reject) => {
         window._pendingResolve = (res) => {
-            hideLoading();
             if (res && res.ok) resolve(res);
             else reject(new Error(res ? res.error : "Gagal terhubung ke server."));
         };
 
-        showLoading();
         const payload = JSON.stringify({ action, token: state.token, ...data });
-        
-        const iframe = document.getElementById("gas-iframe");
         const form = document.createElement("form");
         form.method = "POST";
         form.action = GAS_URL;
@@ -49,14 +43,6 @@ function callGas(action, data = {}) {
     });
 }
 
-function showLoading() {
-    // Optional loading indicator
-}
-function hideLoading() {
-    // Hide loading
-}
-
-// --- INIT APP ---
 window.addEventListener("DOMContentLoaded", () => {
     initTheme();
     if (state.token) {
@@ -69,9 +55,6 @@ window.addEventListener("DOMContentLoaded", () => {
 async function validateAndBoot() {
     try {
         const res = await callGas("validateSession");
-        state.user = res.user;
-        document.getElementById("setting-display-name").textContent = res.user.display_name;
-        document.getElementById("user-greeting").textContent = `Halo, ${res.user.display_name}`;
         showMainApp();
         loadDashboard();
     } catch (e) {
@@ -79,21 +62,16 @@ async function validateAndBoot() {
     }
 }
 
-// --- AUTH ---
 async function handleLogin(e) {
     e.preventDefault();
-    const username = document.getElementById("username").value;
     const password = document.getElementById("password").value;
     const errEl = document.getElementById("login-error");
     errEl.textContent = "";
 
     try {
-        const res = await callGas("login", { username, password });
+        const res = await callGas("login", { password });
         state.token = res.token;
-        state.user = res.user;
         localStorage.setItem("diary_token", res.token);
-        document.getElementById("setting-display-name").textContent = res.user.display_name;
-        document.getElementById("user-greeting").textContent = `Halo, ${res.user.display_name}`;
         showMainApp();
         loadDashboard();
     } catch (err) {
@@ -102,11 +80,7 @@ async function handleLogin(e) {
 }
 
 function handleLogout() {
-    if (state.token) {
-        callGas("logout").catch(() => {});
-    }
     state.token = null;
-    state.user = null;
     localStorage.removeItem("diary_token");
     showLogin();
 }
@@ -122,7 +96,6 @@ function showMainApp() {
     switchPage("dashboard");
 }
 
-// --- NAVIGATION ---
 function switchPage(pageName) {
     document.querySelectorAll(".sub-page").forEach(p => p.classList.remove("active"));
     document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
@@ -140,16 +113,14 @@ function switchPage(pageName) {
     }
 }
 
-// --- DASHBOARD ---
 async function loadDashboard() {
     try {
         const res = await callGas("getDashboardStats");
-        document.getElementById("stat-total").textContent = res.total_diary;
-        document.getElementById("stat-month").textContent = res.month_diary;
-        document.getElementById("stat-streak").textContent = `${res.current_streak} 🔥`;
+        document.getElementById("stat-total").textContent = res.total_diary || 0;
+        document.getElementById("stat-month").textContent = res.month_diary || 0;
         
         const listEl = document.getElementById("recent-list");
-        listEl.innerHTML = res.latest.map(item => `
+        listEl.innerHTML = (res.latest || []).map(item => `
             <div class="diary-item" onclick="openEditor('${item.diary_id}')">
                 <div class="diary-item-header">
                     <span>${item.diary_date}</span>
@@ -158,11 +129,10 @@ async function loadDashboard() {
                 <div class="diary-item-title">${escapeHtml(item.title || "Tanpa Judul")}</div>
                 <div class="diary-item-snippet">${escapeHtml(item.active_content)}</div>
             </div>
-        `).join("") || '<p style="font-size:13px; color:var(--text-secondary);">Belum ada diary. Yuk mulai menulis!</p>';
+        `).join("") || '<p style="font-size:13px; color:var(--text-secondary);">Belum ada diary.</p>';
     } catch (e) {}
 }
 
-// --- EDITOR ---
 function openNewEditor() {
     state.currentDiaryId = null;
     document.getElementById("edit-diary-id").value = "";
@@ -176,8 +146,9 @@ function openNewEditor() {
 
 async function openEditor(diaryId) {
     try {
-        const res = await callGas("getDiary", { diary_id: diaryId });
-        const d = res.diary;
+        const res = await callGas("getDiaryList");
+        const d = res.items.find(x => x.diary_id === diaryId);
+        if (!d) throw new Error("Tidak ditemukan");
         state.currentDiaryId = d.diary_id;
         document.getElementById("edit-diary-id").value = d.diary_id;
         document.getElementById("diary-date").value = d.diary_date;
@@ -200,9 +171,7 @@ function handleEditorInput() {
     
     document.getElementById("save-status").textContent = "Belum tersimpan...";
     clearTimeout(state.autoSaveTimer);
-    state.autoSaveTimer = setTimeout(() => {
-        saveDiary(true);
-    }, 2000);
+    state.autoSaveTimer = setTimeout(() => { saveDiary(true); }, 2000);
 }
 
 async function saveDiary(isAuto = false) {
@@ -214,34 +183,20 @@ async function saveDiary(isAuto = false) {
     if (!title && !content) return;
 
     try {
-        if (state.currentDiaryId) {
-            await callGas("updateDiary", {
-                diary_id: state.currentDiaryId,
-                title, diary_date: date, active_content: content, mood
-            });
-        } else {
-            const res = await callGas("createDiary", {
-                title, diary_date: date, active_content: content, mood
-            });
-            state.currentDiaryId = res.diary_id;
-        }
+        const res = await callGas("createDiary", { title, diary_date: date, active_content: content, mood });
+        state.currentDiaryId = res.diary_id;
         document.getElementById("save-status").textContent = isAuto ? "Draft tersimpan otomatis" : "Berhasil disimpan!";
     } catch (e) {
         document.getElementById("save-status").textContent = "Gagal menyimpan!";
     }
 }
 
-// --- GEMINI AI CORRECTION ---
 async function requestAiCorrection() {
     const text = document.getElementById("diary-content").value;
-    if (!text.trim()) {
-        alert("Tuliskan sesuatu terlebih dahulu.");
-        return;
-    }
+    if (!text.trim()) { alert("Tuliskan sesuatu dulu."); return; }
     try {
-        const res = await callGas("correctDiary", { text, diary_id: state.currentDiaryId || "" });
+        const res = await callGas("correctDiary", { text });
         state.aiCorrectedText = res.corrected_text;
-        
         document.getElementById("ai-orig-preview").textContent = text;
         document.getElementById("ai-corr-preview").textContent = res.corrected_text;
         document.getElementById("ai-modal").classList.remove("hidden");
@@ -250,10 +205,7 @@ async function requestAiCorrection() {
     }
 }
 
-function closeAiModal() {
-    document.getElementById("ai-modal").classList.add("hidden");
-}
-
+function closeAiModal() { document.getElementById("ai-modal").classList.add("hidden"); }
 function applyAiCorrection() {
     document.getElementById("diary-content").value = state.aiCorrectedText;
     handleEditorInput();
@@ -261,18 +213,9 @@ function applyAiCorrection() {
     saveDiary();
 }
 
-// --- HISTORY ---
 async function loadHistoryList() {
-    const query = document.getElementById("search-query").value;
-    const mood = document.getElementById("filter-mood").value;
     try {
-        let res;
-        if (query) {
-            res = await callGas("searchDiary", { query });
-        } else {
-            res = await callGas("getDiaryList", { mood });
-        }
-        
+        const res = await callGas("getDiaryList");
         const listEl = document.getElementById("history-list");
         listEl.innerHTML = res.items.map(item => `
             <div class="diary-item" onclick="openEditor('${item.diary_id}')">
@@ -283,18 +226,10 @@ async function loadHistoryList() {
                 <div class="diary-item-title">${escapeHtml(item.title || "Tanpa Judul")}</div>
                 <div class="diary-item-snippet">${escapeHtml(item.active_content)}</div>
             </div>
-        `).join("") || '<p style="font-size:13px; color:var(--text-secondary);">Tidak ada riwayat diary ditemukan.</p>';
+        `).join("") || '<p style="font-size:13px; color:var(--text-secondary);">Belum ada riwayat.</p>';
     } catch (e) {}
 }
 
-function handleSearch(e) {
-    clearTimeout(state.searchTimer);
-    state.searchTimer = setTimeout(() => {
-        loadHistoryList();
-    }, 300);
-}
-
-// --- THEME & HELPERS ---
 function initTheme() {
     const theme = localStorage.getItem("diary_theme") || "light";
     document.documentElement.setAttribute("data-theme", theme);
